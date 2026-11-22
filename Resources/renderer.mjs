@@ -15,6 +15,47 @@ export function isClientPage(target) {
   }
 }
 
+// ChatGPT generates palettes for both values of data-theme. Keep its latest
+// choice so turning off the wallpaper tool's override restores that palette.
+function setDarkAppearance(enabled) {
+  const key = "__localChatGPTWallpaperAppearance";
+  const previous = globalThis[key];
+  if (!enabled) {
+    previous?.stop();
+    delete globalThis[key];
+    return;
+  }
+  if (previous) return;
+
+  let root;
+  let originalTheme;
+  const observer = new MutationObserver(apply);
+  function apply() {
+    root = document.documentElement;
+    if (!root) {
+      observer.observe(document, { childList: true });
+      return;
+    }
+    originalTheme = root.getAttribute("data-theme");
+    // Ignore our own write while continuing to track changes from the client.
+    observer.disconnect();
+    if (originalTheme !== "dark") root.setAttribute("data-theme", "dark");
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  }
+  globalThis[key] = { stop() {
+    if (observer.takeRecords().length) apply();
+    observer.disconnect();
+    if (!root) return;
+    if (originalTheme === null) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", originalTheme);
+  } };
+  apply();
+}
+
+export function appearanceScript(enabled) {
+  return `if (window === window.top && (${isClientPage})({type:"page",url:location.href})) (${setDarkAppearance})(${enabled})`;
+}
+
 function paint(image, initialOpacity, stateKey, settingsKey, allowFixture) {
   const route = new URLSearchParams(location.search).get("initialRoute") ?? "";
   const client = location.protocol === "app:" && location.hostname === "-" &&

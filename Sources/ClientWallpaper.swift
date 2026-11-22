@@ -11,7 +11,7 @@ final class ClientWallpaper {
     private var outputBuffer = Data()
     private var pendingLaunch = false
     private var launching = false
-    private var configuration: [String: Any] = ["opacity": 0, "imageVersion": NSNull()]
+    private var configuration: [String: Any] = ["opacity": 0, "imageVersion": NSNull(), "darkAppearance": true]
     private var observer: NSObjectProtocol?
     var statusChanged: ((String) -> Void)?
 
@@ -33,8 +33,9 @@ final class ClientWallpaper {
             .filter { !$0.isTerminated }
     }
 
-    func configure(hasImage: Bool, imageVersion: Int, opacity: Double) {
-        configuration = ["opacity": opacity, "imageVersion": hasImage ? imageVersion as Any : NSNull()]
+    func configure(hasImage: Bool, imageVersion: Int, opacity: Double, darkAppearance: Bool) {
+        configuration = ["opacity": opacity, "imageVersion": hasImage ? imageVersion as Any : NSNull(),
+                         "darkAppearance": darkAppearance]
         send(configuration)
     }
 

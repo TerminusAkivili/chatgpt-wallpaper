@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
-import { imageScript, isClientPage, opacityScript, world } from "./renderer.mjs";
+import { appearanceScript, imageScript, isClientPage, opacityScript, world } from "./renderer.mjs";
 
 export class BrowserConnection {
   #id = 0;
@@ -80,6 +80,7 @@ export class WallpaperSession {
   }
 
   async clear() {
+    await this.replaceScript("appearance", appearanceScript(false));
     await this.replaceScript("image", imageScript(null, 0));
     for (const identifier of this.scripts.values()) {
       await this.connection.send("Page.removeScriptToEvaluateOnNewDocument", { identifier }, this.id);
@@ -102,23 +103,27 @@ async function main(port, file) {
   const connection = new BrowserConnection(url);
   const targets = new Map();
   const sessions = new Map();
-  let config = { opacity: 0, imageVersion: null };
+  let config = { opacity: 0, imageVersion: null, darkAppearance: null };
   let image = null;
   let imageVersion = null;
   let desired = null;
   let stopping = false;
   let queued = false;
-  let busy = false;
+  let pendingUpdate = null;
 
   function report(message) { process.stdout.write(JSON.stringify(message) + "\n"); }
 
   function queue() {
     queued = true;
-    if (!busy) void reconcile();
+    if (!pendingUpdate && !stopping) {
+      pendingUpdate = reconcile().finally(() => {
+        pendingUpdate = null;
+        if (queued && !stopping) queue();
+      });
+    }
   }
 
   async function reconcile() {
-    busy = true;
     try {
       while (queued && !stopping) {
         queued = false;
@@ -141,6 +146,10 @@ async function main(port, file) {
               await entry.session.enable();
               sessions.set(target.targetId, entry);
             }
+            if (config.darkAppearance !== null && entry.darkAppearance !== config.darkAppearance) {
+              await entry.session.replaceScript("appearance", appearanceScript(config.darkAppearance));
+              entry.darkAppearance = config.darkAppearance;
+            }
             if (entry.imageVersion !== imageVersion) {
               await entry.session.replaceScript("image", imageScript(image, config.opacity));
               entry.imageVersion = imageVersion;
@@ -161,15 +170,13 @@ async function main(port, file) {
       }
     } catch {
       report({ error: "壁纸文件读取失败" });
-    } finally {
-      busy = false;
-      if (queued && !stopping) queue();
     }
   }
 
   async function quit() {
     if (stopping) return;
     stopping = true;
+    await pendingUpdate;
     await Promise.allSettled([...sessions.values()].map(({ session }) => session.clear()));
     connection.socket.close();
     process.stdin.pause();
@@ -197,7 +204,8 @@ async function main(port, file) {
       const data = JSON.parse(line);
       if (data.quit) { void quit(); return; }
       if (!Number.isFinite(data.opacity) || data.opacity < 0 || data.opacity > 0.60 ||
-          !(data.imageVersion === null || Number.isSafeInteger(data.imageVersion))) return;
+          !(data.imageVersion === null || Number.isSafeInteger(data.imageVersion)) ||
+          typeof data.darkAppearance !== "boolean") return;
       desired = data;
       queue();
     } catch {}
