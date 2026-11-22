@@ -7,12 +7,15 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
     private let wallpaper = ClientWallpaper()
     private let defaults = UserDefaults.standard
     private let opacityKey = "WallpaperOpacity"
+    private let defaultOpacity = 0.30
     private let enabledKey = "WallpaperEnabled"
+    private let darkKey = "WallpaperDarkAppearance"
     private var image: CGImage?
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let toggle = NSButton(checkboxWithTitle: "显示壁纸", target: nil, action: nil)
+    private let darkToggle = NSButton(checkboxWithTitle: "深色外观", target: nil, action: nil)
     private var slider = NSSlider()
     private var percentage = NSTextField(labelWithString: "")
     private var imageVersion = 0
@@ -20,7 +23,7 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
     private var isChoosing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        defaults.register(defaults: [opacityKey: 0.22, enabledKey: true])
+        defaults.register(defaults: [opacityKey: defaultOpacity, enabledKey: true, darkKey: true])
         if image == nil { image = WallpaperImage.saved() }
         wallpaper.statusChanged = { [weak self] status in
             self?.connectionStatus = status
@@ -69,13 +72,18 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
 
         toggle.target = self
         toggle.action = #selector(toggleWallpaper)
-        let buttons = NSStackView(views: [toggle, NSView(), quit])
+        darkToggle.target = self
+        darkToggle.action = #selector(toggleDarkAppearance)
+        let buttons = NSStackView(views: [toggle, darkToggle, NSView(), quit])
         buttons.orientation = .horizontal
         let actions = NSStackView(views: [launch, choose])
         actions.orientation = .horizontal
         actions.spacing = 8
 
-        let stack = NSStackView(views: [status, actions, opacityRow, slider, buttons])
+        let hint = NSTextField(wrappingLabelWithString: "深色搭配 30% 不透明度，正文更容易看清。")
+        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hint.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [status, actions, opacityRow, slider, hint, buttons])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 9
@@ -130,8 +138,11 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
     }
 
     private func refreshWallpaper() {
+        let dark = defaults.bool(forKey: darkKey)
+        darkToggle.state = dark ? .on : .off
+        popover.appearance = dark ? NSAppearance(named: .darkAqua) : nil
         wallpaper.configure(hasImage: image != nil, imageVersion: imageVersion,
-                            opacity: defaults.bool(forKey: enabledKey) ? opacity : 0)
+                            opacity: defaults.bool(forKey: enabledKey) ? opacity : 0, darkAppearance: dark)
         updateStatus()
     }
 
@@ -142,6 +153,11 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
 
     @objc private func toggleWallpaper() {
         defaults.set(!defaults.bool(forKey: enabledKey), forKey: enabledKey)
+        refreshWallpaper()
+    }
+
+    @objc private func toggleDarkAppearance() {
+        defaults.set(darkToggle.state == .on, forKey: darkKey)
         refreshWallpaper()
     }
 
@@ -169,7 +185,7 @@ private final class WallpaperApp: NSObject, NSApplicationDelegate {
             imageVersion += 1
             defaults.set(true, forKey: enabledKey)
             if opacity == 0 {
-                defaults.set(0.22, forKey: opacityKey)
+                defaults.set(defaultOpacity, forKey: opacityKey)
                 slider.doubleValue = opacity
             }
             refreshWallpaper()
